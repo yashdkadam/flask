@@ -23,7 +23,6 @@ from app import app
 from app.util import get_products, Product, load_product, load_product_by_slug, load_json_product
 
 import stripe
-from youtube_search import YoutubeSearch
 import requests
 
 # Stripe Credentials
@@ -432,41 +431,6 @@ def ReturnJSON():
         return jsonify(data)
 
 
-@app.route('/api/mp3/', methods=['GET'])
-def getMp3Url():
-    # q = request.GET.get('q', None)
-    # if(q == None):
-    #     q = ''
-    q = request.args.get('q')
-    song = ''
-    imgUrl = ''
-    mp3Url = ''
-
-    results = YoutubeSearch(q, max_results=10).to_dict()
-    data = results
-    id = data[0]['id']
-    imgUrl = data[0]['thumbnails'][0]
-    song = data[0]['title']
-
-    ydl_opts = {
-        'format': 'bestaudio',
-    }
-
-    res = requests.get(
-        'https://apiyoutube.cc/check.php?callback=jQuery34108672477917974195_1666787018121&v=' + id + '&_=1666787018122').text
-    res = res.split('"')
-    final = []
-    for i in res:
-        if "::" in i:
-            final.append(i)
-
-    mp3Url = "https://apiyoutube.cc/m4a/"+final[1]+"::"+final[0]
-    data = {'mp3Url': mp3Url, 'song': song, 'imgUrl': imgUrl}
-    response = jsonify(data)
-    response.headers.add('Access-Control-Allow-Origin', '*')
-    return response
-
-
 @app.route('/api/mp3fromid/', methods=['GET'])
 def getMp3UrlFromId():
     # q = request.GET.get('q', None)
@@ -486,31 +450,6 @@ def getMp3UrlFromId():
 
     mp3Url = "https://apiyoutube.cc/m4a/"+final[1]+"::"+final[0]
     data = {'mp3Url': mp3Url}
-    response = jsonify(data)
-    response.headers.add('Access-Control-Allow-Origin', '*')
-    return response
-
-
-@app.route('/api/vid/', methods=['GET'])
-def getVideoUrl():
-    # q = request.GET.get('q', None)
-    # if(q == None):
-    #     q = ''
-    q = request.args.get('q')
-
-    song = ''
-    imgUrl = ''
-
-    results = YoutubeSearch(q, max_results=10).to_dict()
-    data = results
-    id = data[0]['id']
-    imgUrl = data[0]['thumbnails'][0]
-    song = data[0]['title']
-
-    ydl_opts = {
-        'format': 'bestaudio',
-    }
-    data = {'id': id, 'song': song, 'imgUrl': imgUrl}
     response = jsonify(data)
     response.headers.add('Access-Control-Allow-Origin', '*')
     return response
