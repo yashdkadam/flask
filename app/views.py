@@ -3,14 +3,15 @@
 Copyright (c) 2019 - present AppSeed.us
 """
 
-import os, json
+import os
+import json
 import base64
 import sqlite3
 import sqlite3 as sql
 
 # Flask modules
-from flask   import render_template, request, jsonify, redirect, g, url_for
-from jinja2  import TemplateNotFound
+from flask import render_template, request, jsonify, redirect, g, url_for
+from jinja2 import TemplateNotFound
 from flask_login import login_required, logout_user, current_user, login_user
 from functools import wraps
 
@@ -18,22 +19,25 @@ from app.models import User
 from . import db
 
 # App modules
-from app      import app
+from app import app
 from app.util import get_products, Product, load_product, load_product_by_slug, load_json_product
 
 import stripe
+from youtube_search import YoutubeSearch
+import requests
 
 # Stripe Credentials
 stripe_keys = {
-    "secret_key"     : app.config['STRIPE_SECRET_KEY'     ] ,
-    "publishable_key": app.config['STRIPE_PUBLISHABLE_KEY'] ,
-    "endpoint_secret": app.config['STRIPE_SECRET_KEY'     ] ,
-} 
+    "secret_key": app.config['STRIPE_SECRET_KEY'],
+    "publishable_key": app.config['STRIPE_PUBLISHABLE_KEY'],
+    "endpoint_secret": app.config['STRIPE_SECRET_KEY'],
+}
 
 stripe.api_key = stripe_keys["secret_key"]
 
 ###############################################
-# AUTH 
+# AUTH
+
 
 @app.route('/login/', methods=['GET', 'POST'])
 def login():
@@ -45,13 +49,14 @@ def login():
         login_user(user=user, remember=True)
         return redirect('/')
 
-
     return render_template("pages/page-sign-in.html")
+
 
 @app.route('/logout/', methods=['GET'])
 def logout():
     logout_user()
     return redirect('/')
+
 
 @app.cli.command("create-user")
 def create_user():
@@ -64,26 +69,30 @@ def create_user():
     db.session.add(user)
     db.session.commit()
 
-# AUTH 
+# AUTH
 ###############################################
+
 
 @app.route("/config")
 def get_publishable_key():
     stripe_config = {"publicKey": stripe_keys["publishable_key"]}
     return jsonify(stripe_config)
 
+
 @app.route("/success")
 def success():
     return render_template("ecommerce/payment-success.html")
+
 
 @app.route("/cancelled")
 def cancelled():
     return render_template("ecommerce/payment-cancelled.html")
 
+
 @app.route("/create-checkout-session/<path>/")
 def create_checkout_session(path):
 
-    product = load_product_by_slug( path )
+    product = load_product_by_slug(path)
 
     domain_url = app.config['SERVER_ADDRESS']
     stripe.api_key = stripe_keys["secret_key"]
@@ -99,7 +108,8 @@ def create_checkout_session(path):
 
         # ?session_id={CHECKOUT_SESSION_ID} means the redirect will have the session ID set as a query param
         checkout_session = stripe.checkout.Session.create(
-            success_url=domain_url + "success?session_id={CHECKOUT_SESSION_ID}",
+            success_url=domain_url +
+            "success?session_id={CHECKOUT_SESSION_ID}",
             cancel_url=domain_url + "cancelled",
             payment_method_types=["card"],
             mode="payment",
@@ -117,6 +127,8 @@ def create_checkout_session(path):
         return jsonify(error=str(e)), 403
 
 # Product Index
+
+
 @app.route('/',          defaults={'path': 'products/index.html'})
 @app.route('/products/', defaults={'path': 'products/index.html'})
 def products_index(path):
@@ -124,44 +136,48 @@ def products_index(path):
     # Collect Products
     products = []
     featured_product = None
-    
+
     # Scan all JSONs in `templates/products`
-    for aJsonPath in get_products():  
-        
+    for aJsonPath in get_products():
+
         if 'featured.json' in aJsonPath:
             continue
 
         # Load the product info from JSON
-        product = load_product( aJsonPath )
-        
+        product = load_product(aJsonPath)
+
         # Is Valid? Save the object
-        if product:     
-            products.append( product )
+        if product:
+            products.append(product)
 
     # Render Products Page
-    return render_template( 'ecommerce/index.html', 
-                            products=products, 
-                            featured_product=load_product_by_slug('featured') )
+    return render_template('ecommerce/index.html',
+                           products=products,
+                           featured_product=load_product_by_slug('featured'))
 
 # List Product
+
+
 @app.route('/products/<path>/')
 def product_info(path):
 
     try:
-        product = load_product_by_slug( path )
-        return render_template( 'ecommerce/template.html', product=product )
+        product = load_product_by_slug(path)
+        return render_template('ecommerce/template.html', product=product)
     except:
-        return render_template( 'pages/page-404.html')
+        return render_template('pages/page-404.html')
 
 # App main route + generic routing
+
+
 @app.route('/<path>')
 def index(path):
 
     try:
 
         # Serve the file (if exists) from app/templates/FILE.html
-        return render_template( 'pages/' + path )
-    
+        return render_template('pages/' + path)
+
     except TemplateNotFound:
         return render_template('pages/page-404.html'), 404
 
@@ -173,10 +189,10 @@ def load_product_json():
 
     # load stripe product
     if request.method == "POST":
-        products = stripe.Product.list(expand = ['data.default_price'])
+        products = stripe.Product.list(expand=['data.default_price'])
         productdict = []
         for product in products:
-            dict= {}
+            dict = {}
             dict['id'] = product['id']
             dict['name'] = product['name']
             dict['price'] = product["default_price"]["unit_amount"]/100
@@ -193,18 +209,20 @@ def load_product_json():
             dict['img_3'] = ''
 
             productdict.append(dict)
-        
+
         for product in productdict:
-            json_product = json.dumps( product, indent=4, separators=(',', ': ') )
+            json_product = json.dumps(
+                product, indent=4, separators=(',', ': '))
             json_data.append(json_product)
 
     # load local product
     local_products = []
-    for aJsonPath in get_products():  
+    for aJsonPath in get_products():
         if 'featured.json' in aJsonPath:
             continue
         local_json = load_json_product(aJsonPath)
-        local_products.append(json.dumps( local_json, indent=4, separators=(',', ': ') ))
+        local_products.append(json.dumps(
+            local_json, indent=4, separators=(',', ': ')))
     return render_template('ecommerce/create-product.html', json_data=json_data, local_products=local_products)
 
 
@@ -217,13 +235,13 @@ def create_new_product():
         slug = name.lower().replace(' ', '-')
 
         try:
-            products = load_product_by_slug( slug )
+            products = load_product_by_slug(slug)
             if products:
                 return redirect('/load-products')
         except:
             outputFile = f'app/templates/products/{slug}.json'
-            with open(outputFile, "w") as outfile: 
-                outfile.write( product )
+            with open(outputFile, "w") as outfile:
+                outfile.write(product)
                 outfile.close()
             return redirect('/load-products')
     else:
@@ -249,7 +267,6 @@ def update_product(path):
         else:
             main_img = json.loads(product)['img_main']
 
-        
         # card image
         card_image = request.files.get('card_image', "")
         card_img = ''
@@ -259,7 +276,7 @@ def update_product(path):
             card_img = request.form.get('card_img_link')
         else:
             card_img = json.loads(product)['img_card']
-        
+
         # image 1
         image_1 = request.files.get('image_1', "")
         img_1 = ''
@@ -312,13 +329,14 @@ def update_product(path):
 
             with open(outputFile, "r+") as outfile:
                 outfile.seek(0)
-                outfile.write(json.dumps(prod, indent=4, separators=(',', ': ')))
+                outfile.write(json.dumps(
+                    prod, indent=4, separators=(',', ': ')))
                 # messages.success(request, 'Product updated!')
                 outfile.truncate()
             return redirect('/load-products')
         except:
             # messages.error(request, "You can't update product id or name!")
-            return redirect('/load-products')  
+            return redirect('/load-products')
     else:
         return redirect('/load-products')
 
@@ -333,9 +351,7 @@ def delete_product(path):
         return redirect('/load-products')
     except:
         # messages.error(request, "You can't delete the product.")
-        return redirect('/load-products')  
-
-
+        return redirect('/load-products')
 
 
 # Custom Filter
@@ -343,33 +359,41 @@ def delete_product(path):
 def product_name(obj):
     return json.loads(obj)['name']
 
+
 @app.template_filter('product_price')
 def product_price(obj):
     return json.loads(obj)['price']
+
 
 @app.template_filter('product_description')
 def product_description(obj):
     return json.loads(obj)['full_description']
 
+
 @app.template_filter('product_info')
 def product_info(obj):
     return json.loads(obj)['info']
+
 
 @app.template_filter('product_main_image')
 def product_main_image(obj):
     return json.loads(obj)['img_main']
 
+
 @app.template_filter('product_card_image')
 def product_card_image(obj):
     return json.loads(obj)['img_card']
+
 
 @app.template_filter('product_image1')
 def product_image1(obj):
     return json.loads(obj)['img_1']
 
+
 @app.template_filter('product_image2')
 def product_image2(obj):
     return json.loads(obj)['img_2']
+
 
 @app.template_filter('product_image3')
 def product_image3(obj):
@@ -382,14 +406,111 @@ def product_slug(obj):
     slug = name.lower().replace(' ', '-')
     return slug
 
+
 @app.template_filter('starts_with')
 def starts_with(obj):
     if obj.startswith('http'):
         return True
     return False
 
+
 @app.template_filter
 def is_logged_in():
     if current_user.is_authenticated:
         return True
     return False
+
+
+@app.route('/returnjson', methods=['GET'])
+def ReturnJSON():
+    if(request.method == 'GET'):
+        data = {
+            "Modules": 15,
+            "Subject": "Data Structures and Algorithms",
+        }
+
+        return jsonify(data)
+
+
+@app.route('/api/mp3/', methods=['GET'])
+def getMp3Url():
+    # q = request.GET.get('q', None)
+    # if(q == None):
+    #     q = ''
+    q = request.args.get('q')
+    song = ''
+    imgUrl = ''
+    mp3Url = ''
+
+    results = YoutubeSearch(q, max_results=10).to_dict()
+    data = results
+    id = data[0]['id']
+    imgUrl = data[0]['thumbnails'][0]
+    song = data[0]['title']
+
+    ydl_opts = {
+        'format': 'bestaudio',
+    }
+
+    res = requests.get(
+        'https://apiyoutube.cc/check.php?callback=jQuery34108672477917974195_1666787018121&v=' + id + '&_=1666787018122').text
+    res = res.split('"')
+    final = []
+    for i in res:
+        if "::" in i:
+            final.append(i)
+
+    mp3Url = "https://apiyoutube.cc/m4a/"+final[1]+"::"+final[0]
+    data = {'mp3Url': mp3Url, 'song': song, 'imgUrl': imgUrl}
+    response = jsonify(data)
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    return response
+
+
+@app.route('/api/mp3fromid/', methods=['GET'])
+def getMp3UrlFromId():
+    # q = request.GET.get('q', None)
+    # if(q == None):
+    #     q = ''
+    q = request.args.get('q')
+
+    mp3Url = ''
+
+    res = requests.get(
+        'https://apiyoutube.cc/check.php?callback=jQuery34108672477917974195_1666787018121&v=' + q + '&_=1666787018122').text
+    res = res.split('"')
+    final = []
+    for i in res:
+        if "::" in i:
+            final.append(i)
+
+    mp3Url = "https://apiyoutube.cc/m4a/"+final[1]+"::"+final[0]
+    data = {'mp3Url': mp3Url}
+    response = jsonify(data)
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    return response
+
+
+@app.route('/api/vid/', methods=['GET'])
+def getVideoUrl():
+    # q = request.GET.get('q', None)
+    # if(q == None):
+    #     q = ''
+    q = request.args.get('q')
+
+    song = ''
+    imgUrl = ''
+
+    results = YoutubeSearch(q, max_results=10).to_dict()
+    data = results
+    id = data[0]['id']
+    imgUrl = data[0]['thumbnails'][0]
+    song = data[0]['title']
+
+    ydl_opts = {
+        'format': 'bestaudio',
+    }
+    data = {'id': id, 'song': song, 'imgUrl': imgUrl}
+    response = jsonify(data)
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    return response
